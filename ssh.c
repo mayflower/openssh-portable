@@ -109,6 +109,7 @@
 #include "version.h"
 #include "ssherr.h"
 #include "myproposal.h"
+#include "dns.h"
 
 #ifdef ENABLE_PKCS11
 #include "ssh-pkcs11.h"
@@ -276,6 +277,50 @@ resolve_host(const char *name, int port, int logerr, char *cname, size_t clen)
 	}
 	return res;
 }
+
+
+static struct addrinfo *
+resolve_host_with_srv(const char *name, int port, int logerr)
+{
+    struct addrinfo *res, *last, *tmp;
+    struct rrsetinfo *srvs = NULL;
+    int result, i;
+
+    printf("%i\n", port);
+    if (port > 0)
+        goto fallback;
+
+    result = getrrsetbyname(name, DNS_RDATACLASS_IN, 33, 0,
+            &srvs);
+    if (result) {
+        error("no srv");
+        goto fallback;
+    }
+
+    for (i=0; i < srvs->rri_nrdatas; i++) {
+        char foo[2048];
+        foo[0] = 0;
+        char tmp[32];
+        char srvhost[32];
+        int srvport;
+        sprintf(tmp, "%u ", ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data)));
+        strcat(foo, tmp);
+        sprintf(tmp, "%u ", ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+2)));
+        strcat(foo, tmp);
+        sprintf(tmp, "%u ", ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+4)));
+        strcat(foo, tmp);
+        srvport = ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+4));
+        dn_expand(srvs->rri_rdatas[i].rdi_data, srvs->rri_rdatas[i].rdi_data+srvs->rri_rdatas[i].rdi_length, srvs->rri_rdatas[i].rdi_data+6, srvhost, 32);
+        strcat(foo, srvhost);
+        printf("srv: %s \n", foo);
+
+        return resolve_host(srvhost, srvport, logerr, NULL, 0);
+    }
+
+fallback:
+    return resolve_host(name, port, logerr, NULL, 0);
+}
+
 
 /*
  * Attempt to resolve a numeric host address / port to a single address.
@@ -1067,8 +1112,8 @@ main(int ac, char **av)
 	/* Fill configuration defaults. */
 	fill_default_options(&options);
 
-	if (options.port == 0)
-		options.port = default_ssh_port();
+	//if (options.port == 0)
+	//	options.port = default_ssh_port();
 	channel_set_af(options.address_family);
 
 	/* Tidy and check options */
@@ -1184,8 +1229,7 @@ main(int ac, char **av)
 	 * have yet resolved the hostname. Do so now.
 	 */
 	if (addrs == NULL && options.proxy_command == NULL) {
-		if ((addrs = resolve_host(host, options.port, 1,
-		    cname, sizeof(cname))) == NULL)
+		if ((addrs = resolve_host_with_srv(host, options.port, 1)) == NULL)
 			cleanup_exit(255); /* resolve_host logs the error */
 	}
 
