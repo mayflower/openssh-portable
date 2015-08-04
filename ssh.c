@@ -285,12 +285,14 @@ resolve_host_with_srv(const char *name, int port, int logerr)
     struct addrinfo *res, *last, *tmp;
     struct rrsetinfo *srvs = NULL;
     int result, i;
+    char lookup_name[40] = "_ssh._tcp.";
 
     printf("%i\n", port);
     if (port > 0)
         goto fallback;
 
-    result = getrrsetbyname(name, DNS_RDATACLASS_IN, 33, 0,
+    strcat(lookup_name, name);
+    result = getrrsetbyname(lookup_name, DNS_RDATACLASS_IN, 33, 0,
             &srvs);
     if (result) {
         error("no srv");
@@ -310,7 +312,13 @@ resolve_host_with_srv(const char *name, int port, int logerr)
         sprintf(tmp, "%u ", ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+4)));
         strcat(foo, tmp);
         srvport = ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+4));
-        dn_expand(srvs->rri_rdatas[i].rdi_data, srvs->rri_rdatas[i].rdi_data+srvs->rri_rdatas[i].rdi_length, srvs->rri_rdatas[i].rdi_data+6, srvhost, 32);
+        dn_expand(
+            srvs->rri_rdatas[i].rdi_data,
+            srvs->rri_rdatas[i].rdi_data + srvs->rri_rdatas[i].rdi_length,
+            srvs->rri_rdatas[i].rdi_data+6,
+            srvhost,
+            32
+        );
         strcat(foo, srvhost);
         printf("srv: %s \n", foo);
 
