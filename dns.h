@@ -44,6 +44,7 @@ enum sshfp_hashes {
 };
 
 #define DNS_RDATACLASS_IN	1
+#define DNS_RDATATYPE_SRV	33
 #define DNS_RDATATYPE_SSHFP	44
 
 #define DNS_VERIFY_FOUND	0x00000001
@@ -53,5 +54,14 @@ enum sshfp_hashes {
 int	verify_host_key_dns(const char *, struct sockaddr *,
     struct sshkey *, int *);
 int	export_dns_rr(const char *, struct sshkey *, FILE *, int);
+
+struct srv_record {
+    char* name;
+    uint16_t port;
+    uint16_t prio;
+    uint16_t prio2;
+    struct srv_record * next;
+};
+int	srv_lookup(const char *, struct srv_record **, size_t *);
 
 #endif /* DNS_H */

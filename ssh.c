@@ -282,48 +282,30 @@ resolve_host(const char *name, int port, int logerr, char *cname, size_t clen)
 static struct addrinfo *
 resolve_host_with_srv(const char *name, int port, int logerr)
 {
-    struct addrinfo *res, *last, *tmp;
-    struct rrsetinfo *srvs = NULL;
-    int result, i;
-    char lookup_name[40] = "_ssh._tcp.";
+    struct addrinfo *res = NULL, *last = NULL;
+    struct srv_record *srvs = NULL;
+    size_t srvs_len, i;
+    int result;
 
-    printf("%i\n", port);
     if (port > 0)
         goto fallback;
 
-    strcat(lookup_name, name);
-    result = getrrsetbyname(lookup_name, DNS_RDATACLASS_IN, 33, 0,
-            &srvs);
+    result = srv_lookup(name, &srvs, &srvs_len);
     if (result) {
         error("no srv");
         goto fallback;
     }
 
-    for (i=0; i < srvs->rri_nrdatas; i++) {
-        char foo[2048];
-        foo[0] = 0;
-        char tmp[32];
-        char srvhost[32];
-        int srvport;
-        sprintf(tmp, "%u ", ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data)));
-        strcat(foo, tmp);
-        sprintf(tmp, "%u ", ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+2)));
-        strcat(foo, tmp);
-        sprintf(tmp, "%u ", ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+4)));
-        strcat(foo, tmp);
-        srvport = ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+4));
-        dn_expand(
-            srvs->rri_rdatas[i].rdi_data,
-            srvs->rri_rdatas[i].rdi_data + srvs->rri_rdatas[i].rdi_length,
-            srvs->rri_rdatas[i].rdi_data+6,
-            srvhost,
-            32
-        );
-        strcat(foo, srvhost);
-        printf("srv: %s \n", foo);
-
-        return resolve_host(srvhost, srvport, logerr, NULL, 0);
+    for (i = 0; i < srvs_len; i++) {
+        if (res == NULL)
+            res = last = resolve_host(srvs[i].name, srvs[i].port, logerr, NULL, 0);
+        else {
+            last->ai_next = resolve_host(srvs[i].name, srvs[i].port, logerr, NULL, 0);
+            last = last->ai_next;
+        }
     }
+
+    return res;
 
 fallback:
     return resolve_host(name, port, logerr, NULL, 0);

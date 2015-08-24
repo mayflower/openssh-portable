@@ -349,3 +349,68 @@ export_dns_rr(const char *hostname, struct sshkey *key, FILE *f, int generic)
 
 	return success;
 }
+
+static int
+cmp_srv_records(const void *srv1_v, const void *srv2_v)
+{
+    struct srv_record const *srv1 = (struct srv_record const *) srv1_v;
+    struct srv_record const *srv2 = (struct srv_record const *) srv2_v;
+
+    // XXX Don't know the rules and have no internet
+    if (srv1->prio > srv2->prio)
+        return 1;
+    else if (srv1->prio < srv2->prio)
+        return -1;
+    else
+        if (srv1->prio2 > srv2->prio2)
+            return 1;
+        else if (srv1->prio2 < srv2->prio2)
+            return -1;
+        else
+            return 0;
+}
+
+int
+srv_lookup(const char *hostname, struct srv_record **records, size_t *records_len)
+{
+    struct rrsetinfo *srvs = NULL;
+    int result;
+    size_t i;
+    char lookup_name[NI_MAXHOST + 10] = "_ssh._tcp.";
+
+    strcat(lookup_name, hostname);
+    result = getrrsetbyname(lookup_name, DNS_RDATACLASS_IN, DNS_RDATATYPE_SRV, 0, &srvs);
+    if (result)
+        return result;
+
+    *records = xmalloc(sizeof(struct srv_record) * srvs->rri_nrdatas);
+    *records_len = srvs->rri_nrdatas;
+    for (i = 0; i < *records_len; i++) {
+        char srvhost[NI_MAXHOST];
+
+        (*records)[i].prio = ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data));
+        (*records)[i].prio2 = ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+2));
+        (*records)[i].port = ntohs(*(uint16_t *)(srvs->rri_rdatas[i].rdi_data+4));
+        dn_expand(
+            srvs->rri_rdatas[i].rdi_data,
+            srvs->rri_rdatas[i].rdi_data + srvs->rri_rdatas[i].rdi_length,
+            srvs->rri_rdatas[i].rdi_data + 6,
+            srvhost,
+            32
+        );
+        (*records)[i].name = xmalloc(strlen(srvhost) + 1);
+        strncpy((*records)[i].name, srvhost, strlen(srvhost) + 1);
+
+        printf(
+            "srv: %d %d %s:%d\n",
+            (*records)[i].prio,
+            (*records)[i].prio2,
+            (*records)[i].name,
+            (*records)[i].port
+        );
+    }
+
+    qsort(*records, *records_len, sizeof(struct srv_record), cmp_srv_records);
+
+    return result;
+}
