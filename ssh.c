@@ -303,7 +303,10 @@ resolve_host_with_srv(const char *name, int port, int logerr)
             last->ai_next = resolve_host(srvs[i].name, srvs[i].port, logerr, NULL, 0);
             last = last->ai_next;
         }
+        xfree(srvs[i].name);
     }
+    
+    xfree(srvs);
 
     return res;
 
@@ -1102,6 +1105,7 @@ main(int ac, char **av)
 	/* Fill configuration defaults. */
 	fill_default_options(&options);
 
+        // TODO: How to set right port from SRV record that we will connect to
 	//if (options.port == 0)
 	//	options.port = default_ssh_port();
 	channel_set_af(options.address_family);
